@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>静岡県の世帯構造と高齢化の二極化</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; margin: 30px; background: #f4f6f9; color: #333; }
+        h1 { font-size: 24px; border-bottom: 2px solid #ccc; padding-bottom: 10px; margin-bottom: 10px; }
+        .subtitle { font-size: 14px; color: #666; margin-bottom: 20px; }
+        
+        /* ボタンのデザイン */
+        .button-group { margin-bottom: 20px; }
+        .button-group button {
+            margin-right: 10px;
+            padding: 8px 16px;
+            cursor: pointer;
+            background: #fff;
+            border: 2px solid #ccc;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #555;
+            transition: all 0.2s;
+        }
+        .button-group button:hover { border-color: #888; }
+        .button-group button.active {
+            background: #2c3e50;
+            color: #fff;
+            border-color: #2c3e50;
+        }
+
+        /* 凡例（色の説明） */
+        .legend { margin-bottom: 15px; font-size: 14px; font-weight: bold; }
+        .legend span { display: inline-block; margin-right: 15px; }
+        .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+        .color-izu { background: #e74c3c; } /* 赤 */
+        .color-west { background: #3498db; } /* 青 */
+        .color-mid { background: #2ecc71; } /* 緑 */
+
+        /* 描画エリア */
+        svg { background: #fff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .node { stroke: #fff; stroke-width: 1.5px; opacity: 0.85; transition: stroke-width 0.2s; }
+        .node:hover { stroke: #222; stroke-width: 3px; cursor: pointer; }
+        
+        /* ツールチップ（マウスオーバーで出る説明） */
+        .tooltip {
+            position: absolute;
+            background: rgba(30, 30, 30, 0.9);
+            color: #fff;
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 13px;
+            pointer-events: none;
+            display: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            z-index: 10;
+        }
+
+        /* 軸（目盛り）のデザイン */
+        .x-axis text { font-size: 13px; fill: #555; font-weight: bold; }
+        .x-axis path, .x-axis line { stroke: #aaa; }
+    </style>
+</head>
+<body>
+
+    <h1>静岡県における都市機能の分断</h1>
+    <div class="subtitle">人口規模では見えない「伊豆・東部の超高齢化」と「中西部のファミリー層」</div>
+
+    <!-- 凡例 -->
+    <div class="legend">
+        <span><i class="dot color-izu"></i>伊豆・東部（熱海、伊東など）</span>
+        <span><i class="dot color-west"></i>西部（浜松、磐田など）</span>
+        <span><i class="dot color-mid"></i>中部（静岡、藤枝など）</span>
+    </div>
+
+    <!-- 切り替えボタンの配置場所 -->
+    <div class="button-group" id="buttons"></div>
+
+    <!-- グラフ用SVG -->
+    <svg width="900" height="450" id="chart"></svg>
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        const metrics = [
+            { key: 'total_pop', label: '総人口' },
+            { key: 'single_ratio', label: '単独世帯（一人暮らし）の割合' },
+            { key: 'elderly_ratio', label: '高齢化率（65歳以上）' }
+        ];
+
+        let currentMetric = 'total_pop';
+
+        const width = 900;
+        const height = 450;
+        const svg = d3.select("#chart");
+        const tooltip = d3.select("#tooltip");
+
+        // 目盛り（X軸）を描画するためのグループ（g要素）を追加し、下部に配置
+        const xAxisGroup = svg.append("g")
+            .attr("class", "x-axis")
+            .attr("transform", `translate(0, ${height - 40})`);
+
+        const izuEast = ['熱海市', '下田市', '伊東市', '沼津市', '三島市', '東伊豆町', '河津町', '南伊豆町', '松崎町', '西伊豆町', '伊豆市', '伊豆の国市', '函南町', '清水町', '長泉町', '小山町', '御殿場市', '裾野市', '富士市', '富士宮市'];
+        const west = ['浜松市', '磐田市', '掛川市', '袋井市', '湖西市', '御前崎市', '菊川市', '森町'];
+
+        d3.csv("shizuoka_shichoson_data.csv").then(data => {
+            
+            data.forEach(d => {
+                metrics.forEach(m => { d[m.key] = +d[m.key]; });
+            });
+
+            // スケール
+            let xScale = d3.scaleLinear().range([60, width - 60]); // 画面の余白を少し調整
+            let rScale = d3.scaleSqrt().range([5, 40]);
+
+            // ボタンの生成
+            const buttonGroup = d3.select("#buttons");
+            metrics.forEach(m => {
+                buttonGroup.append("button")
+                    .text(m.label)
+                    .classed("active", m.key === currentMetric)
+                    .on("click", function() {
+                        d3.selectAll(".button-group button").classed("active", false);
+                        d3.select(this).classed("active", true);
+                        currentMetric = m.key;
+                        updateChart();
+                    });
+            });
+
+            // 円の初期配置
+            const circles = svg.selectAll(".node")
+                .data(data)
+                .enter()
+                .append("circle")
+                .attr("class", "node")
+                .attr("fill", d => {
+                    if (izuEast.includes(d.municipality)) return "#e74c3c"; 
+                    if (west.includes(d.municipality)) return "#3498db";    
+                    return "#2ecc71"; 
+                })
+                .on("mouseover", (event, d) => {
+                    let val = d[currentMetric];
+                    let textVal = currentMetric.includes('ratio') ? (val * 100).toFixed(1) + '%' : val.toLocaleString() + ' 人';
+                    
+                    tooltip.style("display", "block")
+                        .html(`<strong>${d.municipality}</strong><br>${getMetricLabel(currentMetric)}: ${textVal}`);
+                })
+                .on("mousemove", (event) => {
+                    tooltip.style("left", (event.pageX + 15) + "px")
+                        .style("top", (event.pageY - 20) + "px");
+                })
+                .on("mouseout", () => {
+                    tooltip.style("display", "none");
+                });
+
+            // 少し上の方（目盛りと被らない位置）に集まるように調整
+            const simulation = d3.forceSimulation(data)
+                .force("y", d3.forceY((height - 40) / 2).strength(0.1)) 
+                .on("tick", () => {
+                    circles
+                        .attr("cx", d => d.x)
+                        .attr("cy", d => d.y);
+                });
+
+            // チャート更新関数
+            function updateChart() {
+                const extent = d3.extent(data, d => d[currentMetric]);
+                // 最小値〜最大値の幅を少し広めに設定して見やすくする
+                xScale.domain([Math.max(0, extent[0] * 0.9), extent[1] * 1.05]);
+                rScale.domain([0, extent[1]]);
+
+                // ① X軸（目盛り）の更新
+                // 割合（ratio）の場合は%表記、人口の場合はカンマ区切りの数値にする
+                let tickFormat = currentMetric.includes('ratio') ? d3.format(".0%") : d3.format(",");
+                
+                const xAxis = d3.axisBottom(xScale)
+                    .ticks(8) // 目盛りの数
+                    .tickFormat(tickFormat);
+
+                // アニメーションさせながら軸を描画
+                xAxisGroup.transition().duration(1000).call(xAxis);
+
+                // ② 円の大きさと位置の更新
+                circles.transition().duration(1000)
+                    .attr("r", d => rScale(d[currentMetric]));
+
+                simulation
+                    .force("x", d3.forceX(d => xScale(d[currentMetric])).strength(1))
+                    .force("collide", d3.forceCollide(d => rScale(d[currentMetric]) + 2).iterations(4))
+                    .alpha(0.8)
+                    .restart();
+            }
+
+            // 初回描画
+            updateChart();
+        });
+
+        function getMetricLabel(key) {
+            const found = metrics.find(m => m.key === key);
+            return found ? found.label : '';
+        }
+    </script>
+</body>
+</html>
