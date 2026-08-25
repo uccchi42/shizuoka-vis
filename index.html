@@ -2,176 +2,67 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>静岡県における都市機能の分断</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>静岡県における都市機能の分断 - データ可視化</title>
+    <link rel="stylesheet" href="style.css">
     <script src="https://d3js.org/d3.v7.min.js"></script>
-    <style>
-        body { font-family: 'Helvetica Neue', Arial, sans-serif; margin: 30px; background: #f4f6f9; color: #333; }
-        
-        /* 一文の主張を大きく見せるタイトル */
-        h1 { font-size: 20px; border-bottom: 2px solid #ccc; padding-bottom: 12px; margin-bottom: 20px; line-height: 1.4; }
-        
-        .button-group { margin-bottom: 20px; }
-        .button-group button {
-            margin-right: 10px; padding: 8px 16px; cursor: pointer;
-            background: #fff; border: 2px solid #ccc; border-radius: 20px;
-            font-size: 14px; font-weight: bold; color: #555; transition: all 0.2s;
-        }
-        .button-group button:hover { border-color: #888; }
-        .button-group button.active { background: #2c3e50; color: #fff; border-color: #2c3e50; }
-
-        .legend { margin-bottom: 15px; font-size: 14px; font-weight: bold; }
-        .legend span { display: inline-block; margin-right: 15px; }
-        .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
-        .color-izu { background: #e74c3c; } 
-        .color-west { background: #3498db; } 
-        .color-mid { background: #2ecc71; } 
-
-        svg { background: #fff; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .node { stroke: #fff; stroke-width: 1.5px; opacity: 0.85; transition: stroke-width 0.2s; }
-        .node:hover { stroke: #222; stroke-width: 3px; cursor: pointer; }
-        
-        .tooltip {
-            position: absolute; background: rgba(30, 30, 30, 0.9); color: #fff;
-            padding: 10px; border-radius: 5px; font-size: 13px; pointer-events: none; display: none; z-index: 10;
-        }
-        .x-axis text { font-size: 13px; fill: #555; font-weight: bold; }
-        .x-axis path, .x-axis line { stroke: #aaa; }
-
-        .source-info {
-            margin-top: 15px; font-size: 12px; color: #777; text-align: right; width: 900px;
-        }
-        .source-info a { color: #777; }
-    </style>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
 </head>
 <body>
+    <header class="dashboard-header">
+        <div class="header-top">
+            <span class="badge">データビジュアライゼーション</span>
+            <div class="legend-inline">
+                <span><i class="dot color-west"></i>西部（ものづくり・ファミリー層）</span>
+                <span><i class="dot color-mid"></i>中部（県庁所在地・都市機能）</span>
+                <span><i class="dot color-izu"></i>伊豆・東部（観光・移住・超高齢化）</span>
+            </div>
+        </div>
+        <h1>静岡県における都市機能の分断</h1>
+        <p class="subtitle">人口規模では見えない「伊豆・東部の超高齢化」と「中西部のファミリー層」の二極化</p>
+    </header>
 
-    <!-- 主張を一文で明示 -->
-    <h1>静岡県における都市機能の分断：人口規模では見えない「伊豆・東部の超高齢化」と「中西部のファミリー層」の二極化</h1>
+    <main class="dashboard-main">
+        <div class="container">
+            <!-- 左側：静岡県マップ -->
+            <div id="map-container" class="chart-box">
+                <div class="chart-header">
+                    <h2>静岡県 地域別マップ</h2>
+                    <span class="chart-tip">市町ホバーで詳細表示 / 散布図と連動</span>
+                </div>
+                <div class="svg-wrapper">
+                    <svg id="map-chart" viewBox="0 0 540 460" preserveAspectRatio="xMidYMid meet"></svg>
+                </div>
+            </div>
 
-    <div class="legend">
-        <span><i class="dot color-izu"></i>伊豆・東部（熱海、伊東など）</span>
-        <span><i class="dot color-west"></i>西部（浜松、磐田など）</span>
-        <span><i class="dot color-mid"></i>中部（静岡、藤枝など）</span>
-    </div>
+            <!-- 右側：散布図エリア（2D / 3D 切り替え） -->
+            <div id="scatter-container" class="chart-box">
+                <div class="chart-header">
+                    <h2>データ分析散布図</h2>
+                    <span class="chart-tip" id="graph-tip">点にホバーして自治体名・詳細データを確認</span>
+                </div>
+                
+                <!-- グラフ切り替えボタン -->
+                <div class="view-controls">
+                    <span class="control-label">分析視点:</span>
+                    <button class="view-btn active" onclick="switchGraphMode('3d')">3D 立体表示</button>
+                    <button class="view-btn highlight-btn" onclick="switchGraphMode('elderly_single')">2D: 高齢化率 × 単独世帯（二極化を分析）</button>
+                    <button class="view-btn" onclick="switchGraphMode('pop_elderly')">2D: 人口規模 × 高齢化率</button>
+                    <button class="view-btn" onclick="switchGraphMode('pop_single')">2D: 人口規模 × 単独世帯割合</button>
+                </div>
 
-    <div class="button-group" id="buttons"></div>
+                <div id="scatter-chart" style="width:100%; height:460px;"></div>
+            </div>
+        </div>
+    </main>
 
-    <svg width="900" height="480" id="chart"></svg>
     <div class="tooltip" id="tooltip"></div>
 
-    <div class="source-info">
-        出典：SSDSE-A-2026（独立行政法人統計センター）<br>
-        URL: <a href="https://www.nstac.go.jp/use/literacy/ssdse/" target="_blank">https://www.nstac.go.jp/use/literacy/ssdse/</a><br>
-        データ取得日：2026年8月24日
-    </div>
+    <footer class="source-info">
+        <span>出典：SSDSE-A-2026（独立行政法人統計センター）</span>
+        <span>URL: <a href="https://www.nstac.go.jp/use/literacy/ssdse/" target="_blank" rel="noopener noreferrer">https://www.nstac.go.jp/use/literacy/ssdse/</a></span>
+    </footer>
 
-    <script>
-        const metrics = [
-            { key: 'total_pop', label: '総人口', unit: '（人）' },
-            { key: 'single_ratio', label: '単独世帯の割合', unit: '（%）' },
-            { key: 'elderly_ratio', label: '高齢化率', unit: '（%）' }
-        ];
-
-        let currentMetric = 'total_pop';
-        const width = 900;
-        const height = 480;
-        const svg = d3.select("#chart");
-        const tooltip = d3.select("#tooltip");
-
-        const xAxisGroup = svg.append("g")
-            .attr("class", "x-axis")
-            .attr("transform", `translate(0, ${height - 50})`);
-
-        const xAxisLabel = svg.append("text")
-            .attr("x", width / 2)
-            .attr("y", height - 15)
-            .attr("text-anchor", "middle")
-            .style("font-size", "14px")
-            .style("font-weight", "bold")
-            .style("fill", "#555");
-
-        const izuEast = ['熱海市', '下田市', '伊東市', '沼津市', '三島市', '東伊豆町', '河津町', '南伊豆町', '松崎町', '西伊豆町', '伊豆市', '伊豆の国市', '函南町', '清水町', '長泉町', '小山町', '御殿場市', '裾野市', '富士市', '富士宮市'];
-        const west = ['浜松市', '磐田市', '掛川市', '袋井市', '湖西市', '御前崎市', '菊川市', '森町'];
-
-        d3.csv("shizuoka_shichoson_data.csv").then(data => {
-            data.forEach(d => {
-                metrics.forEach(m => { d[m.key] = +d[m.key]; });
-            });
-
-            let xScale = d3.scaleLinear().range([60, width - 60]);
-            let rScale = d3.scaleSqrt().range([5, 40]);
-
-            const buttonGroup = d3.select("#buttons");
-            metrics.forEach(m => {
-                buttonGroup.append("button")
-                    .text(m.label)
-                    .classed("active", m.key === currentMetric)
-                    .on("click", function() {
-                        d3.selectAll(".button-group button").classed("active", false);
-                        d3.select(this).classed("active", true);
-                        currentMetric = m.key;
-                        updateChart();
-                    });
-            });
-
-            // ★ここで .join() を使うように修正しました！
-            const circles = svg.selectAll(".node")
-                .data(data, d => d.municipality)
-                .join("circle")
-                .attr("class", "node")
-                .attr("fill", d => {
-                    if (izuEast.includes(d.municipality)) return "#e74c3c"; 
-                    if (west.includes(d.municipality)) return "#3498db";    
-                    return "#2ecc71"; 
-                })
-                .on("mouseover", (event, d) => {
-                    let val = d[currentMetric];
-                    let textVal = currentMetric.includes('ratio') ? (val * 100).toFixed(1) + '%' : val.toLocaleString() + ' 人';
-                    tooltip.style("display", "block")
-                        .html(`<strong>${d.municipality}</strong><br>${getMetricLabel(currentMetric)}: ${textVal}`);
-                })
-                .on("mousemove", (event) => {
-                    tooltip.style("left", (event.pageX + 15) + "px")
-                        .style("top", (event.pageY - 20) + "px");
-                })
-                .on("mouseout", () => {
-                    tooltip.style("display", "none");
-                });
-
-            const simulation = d3.forceSimulation(data)
-                .force("y", d3.forceY((height - 60) / 2).strength(0.1)) 
-                .on("tick", () => {
-                    circles.attr("cx", d => d.x).attr("cy", d => d.y);
-                });
-
-            function updateChart() {
-                const extent = d3.extent(data, d => d[currentMetric]);
-                xScale.domain([Math.max(0, extent[0] * 0.9), extent[1] * 1.05]);
-                rScale.domain([0, extent[1]]);
-
-                let tickFormat = currentMetric.includes('ratio') ? d3.format(".0%") : d3.format(",");
-                const xAxis = d3.axisBottom(xScale).ticks(8).tickFormat(tickFormat);
-                xAxisGroup.transition().duration(1000).call(xAxis);
-
-                const currentObj = metrics.find(m => m.key === currentMetric);
-                xAxisLabel.text(currentObj.label + " " + currentObj.unit);
-
-                circles.transition().duration(1000)
-                    .attr("r", d => rScale(d[currentMetric]));
-
-                simulation
-                    .force("x", d3.forceX(d => xScale(d[currentMetric])).strength(1))
-                    .force("collide", d3.forceCollide(d => rScale(d[currentMetric]) + 2).iterations(4))
-                    .alpha(0.8).restart();
-            }
-
-            updateChart();
-        });
-
-        function getMetricLabel(key) {
-            const found = metrics.find(m => m.key === key);
-            return found ? found.label : '';
-        }
-    </script>
+    <script src="main.js"></script>
 </body>
 </html>
